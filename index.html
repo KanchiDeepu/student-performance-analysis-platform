@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Student Performance Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background: #f4f6f8; margin: 0; padding: 20px; }
+  h1 { color: #22303f; }
+  .cards { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+  .card { background: white; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); flex: 1; min-width: 160px; }
+  .card h3 { margin: 0; font-size: 13px; color: #6b7785; text-transform: uppercase; }
+  .card p { margin: 6px 0 0; font-size: 26px; font-weight: 600; color: #1a2733; }
+  .controls { margin-bottom: 20px; }
+  button { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin-right: 8px; }
+  button:hover { background: #1d4ed8; }
+  .chart-box { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); max-width: 700px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; background: white; }
+  th, td { border: 1px solid #e2e8f0; padding: 6px 10px; font-size: 13px; text-align: left; }
+  th { background: #f1f5f9; }
+</style>
+</head>
+<body>
+  <h1>📊 Student Performance Dashboard</h1>
+
+  <div class="controls">
+    <button onclick="seedData()">Seed Database</button>
+    <button onclick="loadSummary()">Refresh Summary</button>
+    <button onclick="loadAtRisk()">Show At-Risk Students (&lt;50)</button>
+    <button onclick="loadTop()">Show Top 10 Performers</button>
+  </div>
+
+  <div class="cards" id="summaryCards">
+    <div class="card"><h3>Total Students</h3><p id="totalStudents">-</p></div>
+    <div class="card"><h3>Avg Attendance</h3><p id="avgAttendance">-</p></div>
+    <div class="card"><h3>Avg Study Hours</h3><p id="avgStudyHours">-</p></div>
+    <div class="card"><h3>Avg Final Grade</h3><p id="avgFinalGrade">-</p></div>
+  </div>
+
+  <div class="chart-box">
+    <canvas id="gradeChart" height="220"></canvas>
+  </div>
+
+  <table id="resultsTable" style="display:none">
+    <thead>
+      <tr><th>ID</th><th>Attendance %</th><th>Study Hrs</th><th>Assignment</th><th>Prev Grade</th><th>Final Grade</th></tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+
+<script>
+const API = "/api/students";
+let chart;
+
+async function seedData() {
+  const res = await fetch("/api/seed");
+  const data = await res.json();
+  alert(data.message);
+  loadSummary();
+}
+
+async function loadSummary() {
+  const res = await fetch(`${API}/summary`);
+  const data = await res.json();
+  document.getElementById("totalStudents").innerText = data.total_students ?? "-";
+  document.getElementById("avgAttendance").innerText = data.avg_attendance ? data.avg_attendance.toFixed(1) + "%" : "-";
+  document.getElementById("avgStudyHours").innerText = data.avg_study_hours ? data.avg_study_hours.toFixed(1) + " hrs" : "-";
+  document.getElementById("avgFinalGrade").innerText = data.avg_final_grade ? data.avg_final_grade.toFixed(1) : "-";
+
+  const all = await (await fetch(API)).json();
+  renderChart(all);
+}
+
+function renderChart(students) {
+  const buckets = { "0-40": 0, "40-55": 0, "55-70": 0, "70-85": 0, "85-100": 0 };
+  students.forEach(s => {
+    const g = s.final_grade;
+    if (g < 40) buckets["0-40"]++;
+    else if (g < 55) buckets["40-55"]++;
+    else if (g < 70) buckets["55-70"]++;
+    else if (g < 85) buckets["70-85"]++;
+    else buckets["85-100"]++;
+  });
+
+  const ctx = document.getElementById("gradeChart");
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: Object.keys(buckets),
+      datasets: [{ label: "Number of Students", data: Object.values(buckets), backgroundColor: "#2563eb" }],
+    },
+    options: { responsive: true, plugins: { title: { display: true, text: "Final Grade Distribution" } } },
+  });
+}
+
+function showTable(students) {
+  const body = document.getElementById("resultsBody");
+  body.innerHTML = "";
+  students.forEach(s => {
+    body.innerHTML += `<tr><td>${s.student_id}</td><td>${s.attendance_pct}</td><td>${s.study_hours_per_week}</td><td>${s.assignment_score}</td><td>${s.previous_grade}</td><td>${s.final_grade}</td></tr>`;
+  });
+  document.getElementById("resultsTable").style.display = "table";
+}
+
+async function loadAtRisk() {
+  const res = await fetch(`${API}/at-risk/50`);
+  const data = await res.json();
+  showTable(data.students);
+}
+
+async function loadTop() {
+  const res = await fetch(`${API}/top/10`);
+  const data = await res.json();
+  showTable(data);
+}
+
+loadSummary();
+</script>
+</body>
+</html>
